@@ -17,52 +17,51 @@ int txValue = 0;
 
 class MyServerCallbacks: public BLEServerCallbacks 
 {
-  void onConnect(BLEServer* pServer)
-  { deviceConnected = true; };
-  void onDisconnect(BLEServer* pServer)
-  { deviceConnected = false; };
+  void onConnect(BLEServer* pServer) override
+  { 
+    deviceConnected = true; 
+    Serial.println("Client connected");
+  }
+
+  void onDisconnect(BLEServer* pServer) override
+  { 
+    deviceConnected = false; 
+    Serial.println("Client disconnected");
+  }
 };
 
 class MyCallbacks: public BLECharacteristicCallbacks
 {
-  void onWrite (BLECharacteristic *pCharacteristic) 
+  void onWrite(BLECharacteristic *pCharacteristicRX) override 
   {
-    std::string rxValue = pCharacteristic->getValue();
+    std::string rxValue = pCharacteristicRX->getValue();
+    Serial.print("onWrite callback triggered with value: ");
 
-    for (int i = 0; i < rxValue.length(); i++)
-    {
-      Serial.print(rxValue[i]);
-    }
-    Serial.println();
-/*
     if (rxValue.length() > 0)
     {
-     Serial.println("=====START=RECEIVE=====");
-     Serial.print("Received Value: ");
+      Serial.print("Received Value: ");
+      for (char c : rxValue)
+      {
+        Serial.print(c);
+      }
+      Serial.println();
 
-     for (int i = 0; i < rxValue.length(); i++)
-     {
-       Serial.print(rxValue[i]);
-     }
-     
-     Serial.println();
-     
-     //do stuff based on the command received from the app
-     if(rxValue.find("1") != -1)
-     {
-      Serial.println("Turning LED ON");
-      digitalWrite(22, LOW);
-     }
-     else if (rxValue.find("0") != -1)
-     {
-      Serial.println("Turning LED OFF");
-      digitalWrite(22, HIGH);
-     }
-
-     Serial.println();
-     Serial.println("=====END=RECEIVE=====");
-
-    } */
+      // Example: Turn LED on/off based on received value
+      if(rxValue.find("1") != std::string::npos)
+      {
+        Serial.println("Turning LED ON");
+        digitalWrite(22, LOW);
+      }
+      else if (rxValue.find("0") != std::string::npos)
+      {
+        Serial.println("Turning LED OFF");
+        digitalWrite(22, HIGH);
+      }
+    }
+    else
+    {
+      Serial.println("Received empty value");
+    }
   }
 };
 
@@ -128,5 +127,10 @@ void loop()
     pCharacteristicTX->notify();
     Serial.println("Sent value: " + String(txString));
     delay(500);
+  }
+  else
+  {
+    Serial.println("Device not connected");
+    delay(1000);
   }
 }
