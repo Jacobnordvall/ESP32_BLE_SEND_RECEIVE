@@ -114,7 +114,7 @@ void loop()
 {
   if(deviceConnected)
   {
-    txValue = random(-10, 29);
+    txValue++;
 
     // Conversion of txValue
     char txString[8];
