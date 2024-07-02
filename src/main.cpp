@@ -13,6 +13,23 @@ int txValue = 0;
 #define CHARACTERISTIC__UUID_TX "a9248655-7f1b-4e18-bf36-ad1ee859983f"
 #define CHARACTERISTIC__UUID_RX "9d5cb5f2-5eb2-4b7c-a5d4-21e61c9c6f36"
 
+//=============================HANDLE_DATA============================================
+
+void handleData(std::string rxValue)
+{
+// Example: Turn LED on/off based on received value
+      if(rxValue.find("1") != std::string::npos)
+      {
+        Serial.println("Turning LED ON");
+        digitalWrite(22, LOW);
+      }
+      else if (rxValue.find("0") != std::string::npos)
+      {
+        Serial.println("Turning LED OFF");
+        digitalWrite(22, HIGH);
+      }
+}
+
 //=================================CALLBACKS==========================================
 
 class MyServerCallbacks: public BLEServerCallbacks 
@@ -50,17 +67,7 @@ class MyCallbacks: public BLECharacteristicCallbacks
       }
       Serial.println();
 
-      // Example: Turn LED on/off based on received value
-      if(rxValue.find("1") != std::string::npos)
-      {
-        Serial.println("Turning LED ON");
-        digitalWrite(22, LOW);
-      }
-      else if (rxValue.find("0") != std::string::npos)
-      {
-        Serial.println("Turning LED OFF");
-        digitalWrite(22, HIGH);
-      }
+      handleData(rxValue); //seperate function at the top for handling received data. 
     }
     else
     {
@@ -114,7 +121,7 @@ void setup()
 
 //=================================LOOP===============================================
 
-void loop() 
+void loop()  //Example of sending data.
 {
   if(deviceConnected)
   {
