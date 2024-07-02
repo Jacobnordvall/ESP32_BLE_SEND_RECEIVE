@@ -28,6 +28,7 @@ class MyServerCallbacks: public BLEServerCallbacks
     deviceConnected = false; 
     Serial.println("Client disconnected");
     txValue = 0;
+    digitalWrite(22, HIGH);
     pServer->getAdvertising()->start();
     Serial.println("Advertising started");
   }
