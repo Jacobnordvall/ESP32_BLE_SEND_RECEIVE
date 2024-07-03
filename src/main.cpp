@@ -6,48 +6,97 @@
 
 BLECharacteristic *pCharacteristicTX;
 BLECharacteristic *pCharacteristicRX;
+BLECharacteristic *pCharacteristicAuth;
+BLEServer* pServer;  // Declare a global variable to hold the BLEServer instance
 bool deviceConnected = false;
+bool authenticated = false;
 int txValue = 0;
+unsigned long authStartMillis = 0;  // Variable to store the start time of authentication attempt
+bool authTimeout = false;  // Flag to indicate if authentication timeout has occurred
 
 #define SERVICE_UUID "35e2384d-09ba-40ec-8cc2-a491e7bcd763"
 #define CHARACTERISTIC__UUID_TX "a9248655-7f1b-4e18-bf36-ad1ee859983f"
 #define CHARACTERISTIC__UUID_RX "9d5cb5f2-5eb2-4b7c-a5d4-21e61c9c6f36"
+#define CHARACTERISTIC__UUID_AUTH "e58b4b34-daa6-4a79-8a4c-50d63e6e767f"
+#define AUTH_KEY "your_auth_key"  // Replace with your specific key
+
+const unsigned long AUTH_TIMEOUT_MS = 2000;  // Timeout period in milliseconds (e.g., 10 seconds)
+const unsigned long CHECK_INTERVAL_MS = 1000;  // Interval for checking authentication status
+
 
 //=============================HANDLE_DATA============================================
 
 void handleData(std::string rxValue)
 {
-// Example: Turn LED on/off based on received value
-      if(rxValue.find("1") != std::string::npos)
-      {
-        Serial.println("Turning LED ON");
-        digitalWrite(22, LOW);
-      }
-      else if (rxValue.find("0") != std::string::npos)
-      {
-        Serial.println("Turning LED OFF");
-        digitalWrite(22, HIGH);
-      }
+  // Example: Turn LED on/off based on received value
+  if(rxValue.find("1") != std::string::npos)
+  {
+    Serial.println("Turning LED ON");
+    digitalWrite(22, LOW);
+  }
+  else if (rxValue.find("0") != std::string::npos)
+  {
+    Serial.println("Turning LED OFF");
+    digitalWrite(22, HIGH);
+  }
 }
 
 //=================================CALLBACKS==========================================
 
 class MyServerCallbacks: public BLEServerCallbacks 
 {
-  void onConnect(BLEServer* pServer) override
+  void onConnect(BLEServer* server) override
   { 
+    pServer = server;  // Assign the server reference to the global variable
     deviceConnected = true; 
+    authenticated = false; // Reset authenticated status on new connection
+    authStartMillis = millis();  // Start timing authentication attempt
+    authTimeout = false;  // Reset timeout flag
     Serial.println("Client connected");
   }
 
-  void onDisconnect(BLEServer* pServer) override
+  void onDisconnect(BLEServer* server) override
   { 
     deviceConnected = false; 
     Serial.println("Client disconnected");
     txValue = 0;
     digitalWrite(22, HIGH);
-    pServer->getAdvertising()->start();
+    server->getAdvertising()->start();
     Serial.println("Advertising started");
+  }
+};
+
+class MyAuthCallbacks: public BLECharacteristicCallbacks
+{
+  void onWrite(BLECharacteristic *pCharacteristicAuth) override 
+  {
+    std::string authValue = pCharacteristicAuth->getValue();
+    Serial.print("Auth callback triggered with value: ");
+
+    if (authValue.length() > 0)
+    {
+      Serial.print("Received Value: ");
+      for (char c : authValue)
+      {
+        Serial.print(c);
+      }
+      Serial.println();
+
+      if (authValue == AUTH_KEY)
+      {
+        authenticated = true;
+        Serial.println("Client authenticated successfully");
+      }
+      else
+      {
+        authenticated = false;
+        Serial.println("Authentication failed");
+      }
+    }
+    else
+    {
+      Serial.println("Received empty auth value");
+    }
   }
 };
 
@@ -55,6 +104,12 @@ class MyCallbacks: public BLECharacteristicCallbacks
 {
   void onWrite(BLECharacteristic *pCharacteristicRX) override 
   {
+    if (!authenticated)
+    {
+      Serial.println("Unauthorized access attempt");
+      return;
+    }
+
     std::string rxValue = pCharacteristicRX->getValue();
     Serial.print("onWrite callback triggered with value: ");
 
@@ -67,7 +122,7 @@ class MyCallbacks: public BLECharacteristicCallbacks
       }
       Serial.println();
 
-      handleData(rxValue); //seperate function at the top for handling received data. 
+      handleData(rxValue); // Separate function at the top for handling received data. 
     }
     else
     {
@@ -108,9 +163,17 @@ void setup()
                                       CHARACTERISTIC__UUID_RX,
                                       BLECharacteristic::PROPERTY_WRITE
                                     );
-  
+
   pCharacteristicRX->setCallbacks(new MyCallbacks());
-  
+
+  // Create Auth characteristic
+  pCharacteristicAuth = pService->createCharacteristic(
+                                      CHARACTERISTIC__UUID_AUTH,
+                                      BLECharacteristic::PROPERTY_WRITE
+                                    );
+
+  pCharacteristicAuth->setCallbacks(new MyAuthCallbacks());
+
   // Start the service
   pService->start();
 
@@ -121,9 +184,26 @@ void setup()
 
 //=================================LOOP===============================================
 
-void loop()  //Example of sending data.
+void loop()  // Example of sending data.
 {
-  if(deviceConnected)
+  if (deviceConnected && !authenticated)
+  {
+    // Check if authentication timeout has occurred
+    if (millis() - authStartMillis >= AUTH_TIMEOUT_MS)
+    {
+      authTimeout = true;
+      Serial.println("Authentication timeout");
+      if (pServer->getConnectedCount() > 0)
+      {       
+        for (size_t i = 0; i < pServer->getConnectedCount(); i++)
+        {
+          pServer->disconnect(i);
+        }        
+      }
+    }
+  }
+
+  if(deviceConnected && authenticated)
   {
     txValue++;
 
@@ -141,7 +221,7 @@ void loop()  //Example of sending data.
   }
   else
   {
-    Serial.println("Device not connected");
-    delay(1000);
+    Serial.println("Device not connected or not authenticated");
+    delay(CHECK_INTERVAL_MS);
   }
 }
