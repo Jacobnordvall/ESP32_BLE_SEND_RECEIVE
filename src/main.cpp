@@ -18,7 +18,7 @@ bool authTimeout = false;  // Flag to indicate if authentication timeout has occ
 #define CHARACTERISTIC__UUID_TX "a9248655-7f1b-4e18-bf36-ad1ee859983f"
 #define CHARACTERISTIC__UUID_RX "9d5cb5f2-5eb2-4b7c-a5d4-21e61c9c6f36"
 #define CHARACTERISTIC__UUID_AUTH "e58b4b34-daa6-4a79-8a4c-50d63e6e767f"
-#define AUTH_KEY "your_auth_key"  // Replace with your specific key
+#define AUTH_KEY "your_auth_key"  // Replace with your specific key //possibly solves simple ble brute force pairing hacks by disgarding them.
 
 const unsigned long AUTH_TIMEOUT_MS = 2000;  // Timeout period in milliseconds (e.g., 10 seconds)
 const unsigned long CHECK_INTERVAL_MS = 1000;  // Interval for checking authentication status
@@ -41,6 +41,30 @@ void handleData(std::string rxValue)
   }
 }
 
+//=============================START:ADVERTISING======================================
+
+void startAdvertising()
+{
+ // Clear existing advertising data
+  BLEAdvertisementData advData;
+  advData.setAppearance(0);  // Set appearance to 0 (undefined)
+  advData.setCompleteServices(BLEUUID(SERVICE_UUID));  // Add the service UUID to advertising
+
+  // Set the advertisement data
+  pServer->getAdvertising()->setAdvertisementData(advData);
+
+  // Set scan response data (optional)
+  BLEAdvertisementData scanResponseData;
+  scanResponseData.setName("");  // Clear the local name from scan response (optional)
+
+  // Set the scan response data
+  pServer->getAdvertising()->setScanResponseData(scanResponseData);
+
+  // Start advertising
+  pServer->getAdvertising()->start();  
+  Serial.println("Advertising started");
+}
+
 //=================================CALLBACKS==========================================
 
 class MyServerCallbacks: public BLEServerCallbacks 
@@ -61,8 +85,8 @@ class MyServerCallbacks: public BLEServerCallbacks
     Serial.println("Client disconnected");
     txValue = 0;
     digitalWrite(22, HIGH);
-    server->getAdvertising()->start();
-    Serial.println("Advertising started");
+
+    startAdvertising();
   }
 };
 
@@ -142,6 +166,17 @@ void setup()
   // Create the BLE device
   BLEDevice::init("ESP32");
 
+  // Get the BLE address and print it
+  BLEAddress bleAddress = BLEDevice::getAddress();
+  std::string address = bleAddress.toString();  // Get the BLE address as a string
+  // Convert address to uppercase
+  std::transform(address.begin(), address.end(), address.begin(), [](unsigned char c){ return std::toupper(c); });
+  // Print the uppercase address
+  Serial.println("\n\n");
+  Serial.println("BLE Address (Uppercase): ");
+  Serial.println(address.c_str());
+  Serial.println("");
+
   // Create the BLE server
   BLEServer *pServer = BLEDevice::createServer();
   pServer->setCallbacks(new MyServerCallbacks());
@@ -177,8 +212,8 @@ void setup()
   // Start the service
   pService->start();
 
-  // Start advertising
-  pServer->getAdvertising()->start();
+  startAdvertising();
+
   Serial.println("Waiting for a client connection to notify...");
 }
 
