@@ -43,7 +43,7 @@ void handleData(std::string rxValue)
 
 //=============================START:ADVERTISING======================================
 
-void startAdvertising()
+void startAdvertising() 
 {
  // Clear existing advertising data
   BLEAdvertisementData advData;
@@ -53,12 +53,10 @@ void startAdvertising()
   // Set the advertisement data
   pServer->getAdvertising()->setAdvertisementData(advData);
 
-  // Set scan response data (optional)
-  BLEAdvertisementData scanResponseData;
-  scanResponseData.setName("");  // Clear the local name from scan response (optional)
-
-  // Set the scan response data
-  pServer->getAdvertising()->setScanResponseData(scanResponseData);
+  // Set scan response data (optional) //!DOSNT WORK WITH SAMSUNG PHONES
+  //BLEAdvertisementData scanResponseData;
+  //scanResponseData.setName("");  // Clear the local name from scan response (optional)
+  //pServer->getAdvertising()->setScanResponseData(scanResponseData);
 
   // Start advertising
   pServer->getAdvertising()->start();  
