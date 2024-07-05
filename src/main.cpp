@@ -292,28 +292,5 @@ void loop()  // Example of sending data.
       }
     }
   }
-
-  /*
-  if(deviceConnected && authenticated)
-  {
-    txValue++;
-
-    // Conversion of txValue
-    char txString[8];
-    dtostrf(txValue, 1, 2, txString);
-
-    // Setting the value to the characteristic
-    pCharacteristicTX->setValue(txString);
-  
-    // Notifying the connected client
-    pCharacteristicTX->notify();
-    Serial.println("Sent value: " + String(txString));
-    delay(500);
-  }
-  else
-  {
-    Serial.println("Device not connected or not authenticated");
-    delay(CHECK_INTERVAL_MS);
-  }
-  */
+  delay(100);  // Small delay to avoid rapid cycling
 }
