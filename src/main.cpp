@@ -3,6 +3,7 @@
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
+#include <Preferences.h>
 
 BLECharacteristic *pCharacteristicTX;
 BLECharacteristic *pCharacteristicRX;
@@ -18,11 +19,13 @@ bool authTimeout = false;  // Flag to indicate if authentication timeout has occ
 #define CHARACTERISTIC__UUID_RX "9d5cb5f2-5eb2-4b7c-a5d4-21e61c9c6f36"
 #define CHARACTERISTIC__UUID_AUTH "e58b4b34-daa6-4a79-8a4c-50d63e6e767f"
 
+#define DEVICE_NAME "ESP32-ECU"
 #define AUTH_KEY "your_auth_key"  // Replace with your specific key (Dont forget to on AndroidStudio)  //possibly solves simple ble brute force pairing hacks by disgarding them.
 const unsigned long AUTH_TIMEOUT_MS = 2000;  // Timeout period in milliseconds (e.g., 10 seconds)
 const unsigned long CHECK_INTERVAL_MS = 1000;  // Interval for checking authentication status
 
 //Stuff the esp controls (keep track of the states of things)
+Preferences preferences;     // Create a Preferences object
 int ledState = 0;
 
 
@@ -58,26 +61,55 @@ void sendData(String txValue)
 
 void sendStatesToApp()
 {
-  Serial.println("Sending device state send to app");
+  Serial.println("Sending device state to app");
+  delay(50); 
+  
+  
+  if(ledState == 1)
+  { sendData("011"); } 
 
-   if(ledState == 1)
-   { sendData("011"); } 
+  else if(ledState == 0)
+  { sendData("010"); }   
+   
 
-   else if(ledState == 0)
-   { sendData("010"); }   
-
-
-
-
-
-
+  delay(50);
+  sendData("999");
   Serial.println("Device state send to app");
 }
 
 
+//=============================SAVE:STATE:TO:NVS======================================
+
+
+void applyReadStateFromNVS() {
+  if (ledState == 1) {
+    digitalWrite(22, LOW);
+  } else {
+    digitalWrite(22, HIGH);
+  }
+}
+
+void readStateFromNVS() {
+  preferences.begin("my-app", false);
+  ledState = preferences.getInt("ledState", 0); // default = off
+  Serial.println("Read from NVS: ledState = " + String(ledState));
+  preferences.end();
+
+  applyReadStateFromNVS();
+}
+
+void saveStateToNVS() {
+  preferences.begin("my-app", false);
+    preferences.putInt("ledState", ledState);
+  Serial.println("Written to NVS: ledState = " + String(ledState));
+  preferences.end();
+
+  sendData("991");
+  Serial.println("Saving complete");
+}
+
+
 //=========================HANDLE:INCOMING:DATA=======================================
-
-
 
 void handleData(std::string rxValue) 
 {
@@ -102,8 +134,15 @@ void handleData(std::string rxValue)
           }
           break;
 
-     case 99:
-          sendStatesToApp();
+      case 99: // MASTER COMMANDS (SAVE, RESYNC)
+          if (state == 9) 
+          {              
+            sendStatesToApp();            
+          }
+          else if (state == 1) 
+          {
+            saveStateToNVS();            
+          }    
           break;
 
       // Add more cases as needed
@@ -217,10 +256,11 @@ void setup()
 {
   Serial.begin(9600);
   pinMode(22, OUTPUT);
-  digitalWrite(22, HIGH);
+  
+  readStateFromNVS();
 
   // Create the BLE device
-  BLEDevice::init("ESP32");
+  BLEDevice::init(DEVICE_NAME);
 
   // Get the BLE address and print it
   BLEAddress bleAddress = BLEDevice::getAddress();
