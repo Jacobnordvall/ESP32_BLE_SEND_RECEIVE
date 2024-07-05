@@ -10,7 +10,6 @@ BLECharacteristic *pCharacteristicAuth;
 BLEServer* pServer;  // Declare a global variable to hold the BLEServer instance
 bool deviceConnected = false;
 bool authenticated = false;
-int txValue = 0;
 unsigned long authStartMillis = 0;  // Variable to store the start time of authentication attempt
 bool authTimeout = false;  // Flag to indicate if authentication timeout has occurred
 
@@ -18,49 +17,109 @@ bool authTimeout = false;  // Flag to indicate if authentication timeout has occ
 #define CHARACTERISTIC__UUID_TX "a9248655-7f1b-4e18-bf36-ad1ee859983f"
 #define CHARACTERISTIC__UUID_RX "9d5cb5f2-5eb2-4b7c-a5d4-21e61c9c6f36"
 #define CHARACTERISTIC__UUID_AUTH "e58b4b34-daa6-4a79-8a4c-50d63e6e767f"
-#define AUTH_KEY "your_auth_key"  // Replace with your specific key //possibly solves simple ble brute force pairing hacks by disgarding them.
 
+#define AUTH_KEY "your_auth_key"  // Replace with your specific key (Dont forget to on AndroidStudio)  //possibly solves simple ble brute force pairing hacks by disgarding them.
 const unsigned long AUTH_TIMEOUT_MS = 2000;  // Timeout period in milliseconds (e.g., 10 seconds)
 const unsigned long CHECK_INTERVAL_MS = 1000;  // Interval for checking authentication status
 
+//Stuff the esp controls (keep track of the states of things)
+int ledState = 0;
 
-//=============================HANDLE_DATA============================================
 
-void handleData(std::string rxValue)
+//==========================SEND:DATA:TO:APP==========================================
+
+void sendData(String txValue)
 {
-  // Example: Turn LED on/off based on received value
-  if(rxValue.find("1") != std::string::npos)
+   if(deviceConnected && authenticated)
   {
-    Serial.println("Turning LED ON");
-    digitalWrite(22, LOW);
+         // Convert String to char array
+      char txData[txValue.length() + 1];
+      txValue.toCharArray(txData, sizeof(txData));
+
+      // Setting the value to the characteristic
+      pCharacteristicTX->setValue((uint8_t*)txData, sizeof(txData)-1); // -1 to exclude null terminator
+
+      // Notifying the connected client
+      pCharacteristicTX->notify();
+      
+      // Print sent value
+      Serial.print("Sent value: ");
+      Serial.println(txValue);
   }
-  else if (rxValue.find("0") != std::string::npos)
+  else
   {
-    Serial.println("Turning LED OFF");
-    digitalWrite(22, HIGH);
+    Serial.println("Device not connected or not authenticated");
+    delay(CHECK_INTERVAL_MS);
   }
 }
+
+
+//=============================SEND:STATE:TO:APP======================================
+
+void sendStatesToApp()
+{
+  Serial.println("Sending device state send to app");
+
+   if(ledState == 1)
+   { sendData("011"); } 
+
+   else if(ledState == 0)
+   { sendData("010"); }   
+
+
+
+
+
+
+  Serial.println("Device state send to app");
+}
+
+
+//=========================HANDLE:INCOMING:DATA=======================================
+
+
+
+void handleData(std::string rxValue) 
+{
+  int encodedNumber = std::atoi(rxValue.c_str()); // Convert std::string to int
+  int command = encodedNumber / 10;  // Extract first two digits (tens and hundreds place)
+  int state = encodedNumber % 10; // Extract last digit (units place)
+  
+  switch (command) 
+  {
+      case 1: // LED
+          if (state == 1) 
+          {              
+             digitalWrite(22, LOW); // Uncomment for actual hardware control
+             ledState = 1;
+             sendData("011");
+          }
+          else if (state == 0) 
+          {
+             digitalWrite(22, HIGH); // Uncomment for actual hardware control
+             ledState = 0;
+             sendData("010");
+          }
+          break;
+
+     case 99:
+          sendStatesToApp();
+          break;
+
+      // Add more cases as needed
+      
+      default:
+          break;
+  }
+}
+
 
 //=============================START:ADVERTISING======================================
 
 void startAdvertising() 
 {
- // Clear existing advertising data
-  BLEAdvertisementData advData;
-  advData.setAppearance(0);  // Set appearance to 0 (undefined)
-  advData.setCompleteServices(BLEUUID(SERVICE_UUID));  // Add the service UUID to advertising
-
-  // Set the advertisement data
-  pServer->getAdvertising()->setAdvertisementData(advData);
-
-  // Set scan response data (optional) //!DOSNT WORK WITH SAMSUNG PHONES
-  //BLEAdvertisementData scanResponseData;
-  //scanResponseData.setName("");  // Clear the local name from scan response (optional)
-  //pServer->getAdvertising()->setScanResponseData(scanResponseData);
-
-  // Start advertising
-  pServer->getAdvertising()->start();  
-  Serial.println("Advertising started");
+   pServer->getAdvertising()->start();  
+   Serial.println("Advertising started");
 }
 
 //=================================CALLBACKS==========================================
@@ -81,10 +140,9 @@ class MyServerCallbacks: public BLEServerCallbacks
   { 
     deviceConnected = false; 
     Serial.println("Client disconnected");
-    txValue = 0;
-    digitalWrite(22, HIGH);
-
-    startAdvertising();
+ 
+    // Start advertising
+    startAdvertising(); 
   }
 };
 
@@ -178,7 +236,7 @@ void setup()
   // Create the BLE server
   BLEServer *pServer = BLEDevice::createServer();
   pServer->setCallbacks(new MyServerCallbacks());
-
+    
   // Create the BLE service
   BLEService *pService = pServer->createService(SERVICE_UUID);
 
@@ -210,9 +268,8 @@ void setup()
   // Start the service
   pService->start();
 
-  startAdvertising();
-
-  Serial.println("Waiting for a client connection to notify...");
+  // Start advertising
+  startAdvertising();  
 }
 
 //=================================LOOP===============================================
@@ -236,6 +293,7 @@ void loop()  // Example of sending data.
     }
   }
 
+  /*
   if(deviceConnected && authenticated)
   {
     txValue++;
@@ -257,4 +315,5 @@ void loop()  // Example of sending data.
     Serial.println("Device not connected or not authenticated");
     delay(CHECK_INTERVAL_MS);
   }
+  */
 }
