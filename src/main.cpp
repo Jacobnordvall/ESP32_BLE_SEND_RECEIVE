@@ -24,9 +24,18 @@ bool authTimeout = false;  // Flag to indicate if authentication timeout has occ
 const unsigned long AUTH_TIMEOUT_MS = 2000;  // Timeout period in milliseconds (e.g., 10 seconds)
 const unsigned long CHECK_INTERVAL_MS = 1000;  // Interval for checking authentication status
 
+// Define the PWM parameters
+const int pwmFreq = 5000;     // PWM frequency
+const int pwmChannel = 0;     // PWM channel
+const int pwmResolution = 8;  // PWM resolution (8-bit: values from 0 to 255)
+const int pwmPin = 12;         // Pin where the PWM signal is output
+
 //Stuff the esp controls (keep track of the states of things)
-Preferences preferences;     // Create a Preferences object
-int ledState = 0;
+Preferences preferences;
+int ledState = 0; //saved
+int ledPower = 0;  //saved
+int ledMode = 0; //saved
+
 
 
 //==========================SEND:DATA:TO:APP==========================================
@@ -59,6 +68,17 @@ void sendData(String txValue)
 
 //=============================SEND:STATE:TO:APP======================================
 
+String formatNumber(int number) // Format the string with leading zeros
+{      
+    if (number < 10) {
+        return "00" + String(number);
+    } else if (number < 100) {
+        return "0" + String(number);
+    } else {
+        return String(number);
+    }
+}
+
 void sendStatesToApp()
 {
   Serial.println("Sending device state to app");
@@ -66,14 +86,23 @@ void sendStatesToApp()
   
   
   if(ledState == 1)
-  { sendData("011"); } 
-
+  { sendData("01001"); } 
   else if(ledState == 0)
-  { sendData("010"); }   
+  { sendData("01000"); } 
+
+  delay(50);
+  if(ledMode == 1)
+  { sendData("03001"); } 
+  else if(ledMode == 0)
+  { sendData("03000"); } 
+
+  delay(50); //delay then send led power
+  sendData("02"+ formatNumber(ledPower));
+  
    
 
   delay(50);
-  sendData("999");
+  sendData("99002");
   Serial.println("Device state send to app");
 }
 
@@ -81,30 +110,44 @@ void sendStatesToApp()
 //=============================SAVE:STATE:TO:NVS======================================
 
 
-void applyReadStateFromNVS() {
-  if (ledState == 1) {
-    digitalWrite(22, LOW);
-  } else {
-    digitalWrite(22, HIGH);
+void applyReadStateFromNVS() 
+{
+  if (ledState == 1)
+  {
+    ledcWrite(pwmChannel, ledPower);
+  } else 
+  {
+    ledcWrite(pwmChannel, 0);
   }
+  
 }
 
-void readStateFromNVS() {
+void readStateFromNVS() 
+{
   preferences.begin("my-app", false);
   ledState = preferences.getInt("ledState", 0); // default = off
+  ledPower = preferences.getInt("ledPower", 28); //default 10% (pwm)
+  ledMode = preferences.getInt("ledMode", 0); //default static 
   Serial.println("Read from NVS: ledState = " + String(ledState));
+  Serial.println("Read from NVS: ledPower = " + String(ledPower));
+  Serial.println("Read from NVS: ledMode = " + String(ledMode));
   preferences.end();
 
   applyReadStateFromNVS();
 }
 
-void saveStateToNVS() {
+void saveStateToNVS() 
+{
   preferences.begin("my-app", false);
-    preferences.putInt("ledState", ledState);
+  preferences.putInt("ledState", ledState);
+  preferences.putInt("ledPower", ledPower);
+  preferences.putInt("ledMode", ledMode);
   Serial.println("Written to NVS: ledState = " + String(ledState));
+  Serial.println("Written to NVS: ledPower = " + String(ledPower));
+  Serial.println("Written to NVS: ledMode = " + String(ledMode));
   preferences.end();
 
-  sendData("991");
+  sendData("99001");
   Serial.println("Saving complete");
 }
 
@@ -113,29 +156,45 @@ void saveStateToNVS() {
 
 void handleData(std::string rxValue) 
 {
-  int encodedNumber = std::atoi(rxValue.c_str()); // Convert std::string to int
-  int command = encodedNumber / 10;  // Extract first two digits (tens and hundreds place)
-  int state = encodedNumber % 10; // Extract last digit (units place)
-  
+  //first two are the command last three are the state
+  int encodedNumber = std::atoi(rxValue.c_str()); // Convert std::string to int    
+  int command = encodedNumber / 1000;  // Extract the first two digits
+  int state = encodedNumber % 1000; // Extract the last three digits
+
+
   switch (command) 
   {
       case 1: // LED
           if (state == 1) 
           {              
-             digitalWrite(22, LOW); // Uncomment for actual hardware control
+             ledcWrite(pwmChannel, ledPower);
              ledState = 1;
-             sendData("011");
+             sendData("01001");
           }
           else if (state == 0) 
           {
-             digitalWrite(22, HIGH); // Uncomment for actual hardware control
+             ledcWrite(pwmChannel, 0);
              ledState = 0;
-             sendData("010");
+             sendData("01000");
           }
+          break;
+      
+      case 2:
+          ledPower = state;
+          if(ledState == 1)
+          { ledcWrite(pwmChannel, ledPower); }
+          sendData("02"+ formatNumber(ledPower));
+          break;
+
+      case 3:
+          ledMode = state;
+          if(ledState == 1)
+            ledcWrite(pwmChannel, ledPower);
+          sendData("03"+ formatNumber(ledMode));
           break;
 
       case 99: // MASTER COMMANDS (SAVE, RESYNC)
-          if (state == 9) 
+          if (state == 2) 
           {              
             sendStatesToApp();            
           }
@@ -255,7 +314,9 @@ class MyCallbacks: public BLECharacteristicCallbacks
 void setup() 
 {
   Serial.begin(9600);
-  pinMode(22, OUTPUT);
+
+  ledcSetup(pwmChannel, pwmFreq, pwmResolution); // Configure the PWM functionalities  
+  ledcAttachPin(pwmPin, pwmChannel); // Attach the PWM channel to the specified pin   
   
   readStateFromNVS();
 
@@ -332,5 +393,21 @@ void loop()  // Example of sending data.
       }
     }
   }
-  delay(100);  // Small delay to avoid rapid cycling
+  delay(200);  // Small delay to avoid rapid cycling
+
+  if (ledMode == 1)
+  {
+    if (ledState == 1)
+    {
+      int currentDutyCycle = ledcRead(pwmChannel); // Read the current duty cycle value
+      if (currentDutyCycle > 0)
+      {
+        ledcWrite(pwmChannel, 0);
+      }
+      else
+      {
+        ledcWrite(pwmChannel, ledPower);
+      }
+    }
+  }
 }
